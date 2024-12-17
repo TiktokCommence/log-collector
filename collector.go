@@ -22,7 +22,14 @@ func NewCollector(reader []reader.Reader, writer []writer.Writer, num uint) *Col
 }
 func (c *Collector) Collect(ctx context.Context) error {
 	errch := make(chan error)
-	defer close(errch)
+	//注意结束时把writer给关闭
+	defer func() {
+		close(errch)
+		for _, w := range c.writer {
+			w.Close()
+		}
+	}()
+
 	//reader返回错误都是大型错误,需要监听
 	for _, r := range c.reader {
 		go func(chan error) {

@@ -17,3 +17,6 @@ func (s *StdoutWriter) Write(data []byte) error {
 	fmt.Println(string(data))
 	return nil
 }
+func (s *StdoutWriter) Close() error {
+	return nil
+}

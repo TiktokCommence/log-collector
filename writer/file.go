@@ -22,6 +22,13 @@ type FileWriter struct {
 	mutex sync.Mutex
 }
 
+func (f *FileWriter) Close() error {
+	if f.currentFile == nil {
+		return nil
+	}
+	return f.currentFile.Close()
+}
+
 // Write 将数据写入文件，支持时间和大小切割
 func (f *FileWriter) Write(data []byte) error {
 	//写操作,上锁
@@ -38,6 +45,7 @@ func (f *FileWriter) Write(data []byte) error {
 	}
 	//如果currentFile是空指针，要创建文件
 	//如果这次创建的文件和上次创建的文件名不一样,也需要创建文件
+	//创建新的文件前,需注意将原来的文件关闭，createFile里已实现
 	if fn := newFileName + ".log"; f.currentFile == nil || fn != f.lastFileName {
 		err := f.createFile(fn)
 		if err != nil {
@@ -104,6 +112,12 @@ func (f *FileWriter) concat(oldname string, newpart string) string {
 
 // 创建文件,并给f.lastFileName赋值
 func (f *FileWriter) createFile(fn string) error {
+	//如果需要创建新的文件,应该释放原来的文件句柄
+	if f.currentFile != nil {
+		f.currentFile.Close()
+		f.currentFile = nil
+	}
+
 	var err error
 	f.currentFile, err = os.OpenFile(fn, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
