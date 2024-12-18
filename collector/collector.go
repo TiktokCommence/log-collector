@@ -1,8 +1,8 @@
-package log_collector
+package collector
 
 import (
 	"context"
-	"fmt"
+	"log"
 	"log-collector/reader"
 	"log-collector/writer"
 )
@@ -37,25 +37,30 @@ func (c *Collector) Collect(ctx context.Context) error {
 		}(errch)
 	}
 
-	go func() {
-		for {
-			select {
-			case msg := <-c.MsgChan:
-				for _, w := range c.writer {
-					go func() {
-						err := w.Write(msg)
-						fmt.Println(err)
-					}()
-				}
-			}
-		}
-	}()
+	go c.write(ctx)
 
 	//从errch中获取错误,如果有错误就返回，告知主程序取消
 	for {
 		select {
 		case err := <-errch:
 			return err
+		}
+	}
+}
+func (c *Collector) write(ctx context.Context) {
+	for {
+		select {
+		case msg := <-c.MsgChan:
+			for _, w := range c.writer {
+				go func() {
+					err := w.Write(msg)
+					if err != nil {
+						log.Println(err)
+					}
+				}()
+			}
+		case <-ctx.Done():
+			return
 		}
 	}
 }

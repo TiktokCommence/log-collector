@@ -1,2 +1,4 @@
 .idea
 writer/test/
+config/config.yaml
+*.log

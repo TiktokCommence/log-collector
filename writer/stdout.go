@@ -14,7 +14,7 @@ type StdoutWriter struct {
 func (s *StdoutWriter) Write(data []byte) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	fmt.Println(string(data))
+	fmt.Printf(string(data))
 	return nil
 }
 func (s *StdoutWriter) Close() error {
