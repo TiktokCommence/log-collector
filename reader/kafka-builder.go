@@ -1,9 +1,8 @@
 package reader
 
-import (
-	"fmt"
-	"github.com/IBM/sarama"
-)
+import "fmt"
+
+const GROUPID = "appLog"
 
 type KafkaReaderBuilder struct {
 	BrokersAddr []string
@@ -18,13 +17,9 @@ func NewKafkaReaderBuilder(addr []string, topic string) *KafkaReaderBuilder {
 }
 
 func (k *KafkaReaderBuilder) Build() (Reader, error) {
-	conf := sarama.NewConfig()
-	consumer, err := sarama.NewConsumer(k.BrokersAddr, conf)
+	r, err := newKafkaReader(k.BrokersAddr, k.Topic, GROUPID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create consumer: %v", err)
+		return nil, fmt.Errorf("error creating Kafka %w", err)
 	}
-	return &KafkaReader{
-		consumer: consumer,
-		topic:    k.Topic,
-	}, nil
+	return r, nil
 }

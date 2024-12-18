@@ -4,48 +4,77 @@ import (
 	"context"
 	"fmt"
 	"github.com/IBM/sarama"
-	"sync"
+	"log"
 )
 
+// KafkaReader 结构体
 type KafkaReader struct {
-	consumer sarama.Consumer
-	topic    string
+	consumerGroup sarama.ConsumerGroup
+	topic         string
+	groupID       string
 }
 
-func (k *KafkaReader) Read(ctx context.Context, ch chan<- []byte) error {
-	// 获取所有分区
-	partitionList, err := k.consumer.Partitions(k.topic)
+// newKafkaReader 初始化 KafkaReader
+func newKafkaReader(brokers []string, topic, groupID string) (*KafkaReader, error) {
+	config := sarama.NewConfig()
+	config.Consumer.Offsets.Initial = sarama.OffsetOldest
+	config.Consumer.Offsets.AutoCommit.Enable = true // 启用自动提交偏移量
+
+	// 创建消费者组
+	consumerGroup, err := sarama.NewConsumerGroup(brokers, groupID, config)
 	if err != nil {
-		return fmt.Errorf("get partitions error: %v", err)
+		return nil, fmt.Errorf("failed to create consumer group: %v", err)
 	}
 
-	var wg sync.WaitGroup
-	for _, partition := range partitionList {
-		// 针对每个分区创建一个对应的分区消费者
-		pc, err := k.consumer.ConsumePartition(k.topic, partition, sarama.OffsetNewest)
+	return &KafkaReader{
+		consumerGroup: consumerGroup,
+		topic:         topic,
+		groupID:       groupID,
+	}, nil
+}
+
+// Kafka 消费者处理器
+type messageHandler struct {
+	ch chan<- []byte
+}
+
+// Setup 初始化消费者
+func (h *messageHandler) Setup(sess sarama.ConsumerGroupSession) error {
+	return nil
+}
+
+// Cleanup 清理资源
+func (h *messageHandler) Cleanup(sess sarama.ConsumerGroupSession) error {
+	return nil
+}
+
+// ConsumeClaim 消费消息
+func (h *messageHandler) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
+	for msg := range claim.Messages() {
+		// 处理消息
+		h.ch <- msg.Value
+		// 提交偏移量，表示消息已被消费
+		sess.MarkMessage(msg, "")
+	}
+	return nil
+}
+
+// Read 从 Kafka 中读取消息
+func (k *KafkaReader) Read(ctx context.Context, ch chan<- []byte) error {
+	handler := &messageHandler{ch: ch}
+
+	// 启动消费者组
+	for {
+		// 这里传递的参数包括消费者组的上下文（以便控制退出）、消费者组 ID 和消费的 topic
+		err := k.consumerGroup.Consume(ctx, []string{k.topic}, handler)
 		if err != nil {
-			fmt.Printf("Failed to start consumer for partition %d: %v\n", partition, err)
-			continue // 继续尝试消费其他分区
+			// 发生错误时打印日志并返回
+			log.Printf("Error consuming messages: %v", err)
 		}
 
-		wg.Add(1)
-		go func(pc sarama.PartitionConsumer) {
-			defer wg.Done()
-			defer pc.AsyncClose()
-
-			// 消费消息
-			for {
-				select {
-				case msg := <-pc.Messages():
-					ch <- msg.Value
-				case <-ctx.Done():
-					// 收到停止信号，退出 goroutine
-					return
-				}
-			}
-		}(pc)
+		// 检查是否已收到停止信号（退出条件）
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 	}
-	// 等待所有 goroutine 完成
-	wg.Wait()
-	return nil
 }
